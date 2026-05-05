@@ -119,14 +119,17 @@ services:
     environment:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_SUPERSET_DB}
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
     ports:
       - "8088:8088"
     volumes:
       - superset_home:/app/superset_home
+      - ./superset/superset_config.py:/app/superset_config.py:ro
     command:
       - bash
       - -c
       - |
+          pip install --quiet --no-cache-dir snowflake-sqlalchemy snowflake-connector-python "PyJWT<2.8.0" &&
           superset db upgrade &&
           superset fab create-admin \
             --username ${SUPERSET_ADMIN_USER} \

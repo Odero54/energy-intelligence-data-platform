@@ -1,17 +1,15 @@
 """Download WorldPop 1km population rasters and aggregate to admin-2 level.
 
-Source:  WorldPop Global 2000-2020, 1km, unconstrained, UN-adjusted
-URL:     https://data.worldpop.org/GIS/Population/Global_2000_2020_1km/
-         unconstrained/{YEAR}/{ISO3}/{iso3}_ppp_{year}_1km_Aggregated_UNadj.tif
+Source:  WorldPop Global 2015-2030, 1km, constrained (R2025A)
+URL:     https://hub.worldpop.org/geodata/listing?id=136
 
 Strategy
 --------
-- Download rasters for SOURCE_YEARS (2019, 2020) — the last stable WorldPop release.
-- For each country × source_year, sum pixel values within every admin-2 polygon
-  to get total_population, then derive area_km2 and pop_density_km2.
+- Download rasters for SOURCE_YEARS (2019–2023) from the constrained R2025A dataset,
+  which provides modelled population estimates for all years up to 2030.
+- For each country × year, sum pixel values within every admin-2 polygon to get
+  total_population, then derive area_km2 and pop_density_km2.
 - Rasters and processed parquets are cached so re-runs skip already-done work.
-- Years 2021–2023 reuse the 2020 raster with an updated year label (population
-  changes slowly; this is the standard approach when upstream data lags).
 """
 
 from __future__ import annotations
@@ -27,18 +25,14 @@ import requests
 from dotenv import load_dotenv
 from rasterio.mask import mask as rio_mask
 from shapely import wkt as shapely_wkt
-from shapely.ops import transform as shapely_transform
 
 load_dotenv()
 
-WORLDPOP_HUB_API = "https://hub.worldpop.org/rest/data/pop/wpgp"
+# WorldPop Hub API — constrained 2015-2030 1km resolution (R2025A)
+WORLDPOP_HUB_API = "https://hub.worldpop.org/rest/data/pop/G2_CN_POP_R25A_1km"
 
-# Years with published WorldPop files (dataset ends at 2020)
-SOURCE_YEARS = [2019, 2020]
-# All years we want in the warehouse
+SOURCE_YEARS = [2019, 2020, 2021, 2022, 2023]
 TARGET_YEARS = [2019, 2020, 2021, 2022, 2023]
-# Fallback raster for years beyond the dataset
-PROXY_YEAR = 2020
 
 TARGET_COUNTRIES = {
     "KEN": "Kenya",
@@ -51,11 +45,7 @@ TARGET_COUNTRIES = {
 }
 
 BOUNDARIES_CACHE = (
-    Path(__file__).parents[2]
-    / "data"
-    / "raw"
-    / "admin_boundaries"
-    / "admin_boundaries_all.parquet"
+    Path(__file__).parents[2] / "data" / "raw" / "admin_boundaries" / "admin_boundaries_all.parquet"
 )
 RAW_DIR = Path(__file__).parents[2] / "data" / "raw" / "population"
 
@@ -72,7 +62,6 @@ OUTPUT_COLS = [
     "_source_file",
 ]
 
-# Equal-area CRS for reliable km² calculations
 _GEOD = pyproj.Geod(ellps="WGS84")
 
 
@@ -85,7 +74,7 @@ def _worldpop_url(iso3: str, year: int) -> str:
             files = item.get("files", [])
             if files:
                 return files[0]
-    raise ValueError(f"No WorldPop file found for {iso3} {year}")
+    raise ValueError(f"No WorldPop R2025A file found for {iso3} {year}")
 
 
 def _download_raster(iso3: str, year: int, dest: Path) -> None:
@@ -136,10 +125,8 @@ def _zonal_pop(raster_path: Path, gdf: gpd.GeoDataFrame) -> list[float]:
     return results
 
 
-def _compute_country_year(
-    iso3: str, src_year: int, admin_gdf: gpd.GeoDataFrame
-) -> pd.DataFrame:
-    """Run zonal stats for one country × source_year; return DataFrame."""
+def _compute_country_year(iso3: str, src_year: int, admin_gdf: gpd.GeoDataFrame) -> pd.DataFrame:
+    """Run zonal stats for one country × year; return DataFrame."""
     raster_path = RAW_DIR / f"{iso3.lower()}_{src_year}.tif"
     if not raster_path.exists():
         _download_raster(iso3, src_year, raster_path)
@@ -171,8 +158,8 @@ def _compute_country_year(
                 "total_population": str(round(total_pop)),
                 "area_km2": str(round(area, 4)),
                 "pop_density_km2": str(round(density, 6)),
-                "source_dataset": f"WorldPop 1km unconstrained UNadj {src_year}",
-                "_source_file": f"worldpop_{iso3.lower()}_{src_year}",
+                "source_dataset": f"WorldPop 1km constrained R2025A {src_year}",
+                "_source_file": f"worldpop_R2025A_{iso3.lower()}_{src_year}",
             }
         )
 
@@ -181,30 +168,18 @@ def _compute_country_year(
 
 def extract_country(iso3: str, admin_gdf: gpd.GeoDataFrame) -> pd.DataFrame:
     """Return population rows for all TARGET_YEARS for one country."""
-    base_dfs: dict[int, pd.DataFrame] = {}
-
-    for src_year in SOURCE_YEARS:
-        proc_cache = RAW_DIR / f"pop_{iso3.lower()}_{src_year}.parquet"
-        if proc_cache.exists():
-            print(f"    {iso3} {src_year}: using cache")
-            base_dfs[src_year] = pd.read_parquet(proc_cache)
-        else:
-            df = _compute_country_year(iso3, src_year, admin_gdf)
-            df.to_parquet(proc_cache, index=False)
-            base_dfs[src_year] = df
-            print(f"    {iso3} {src_year}: {len(df)} rows computed")
-
     result_dfs: list[pd.DataFrame] = []
-    for target_year in TARGET_YEARS:
-        src_year = target_year if target_year in SOURCE_YEARS else PROXY_YEAR
-        df = base_dfs[src_year].copy()
-        df["year"] = str(target_year)
-        if target_year not in SOURCE_YEARS:
-            df["source_dataset"] = (
-                f"WorldPop 1km unconstrained UNadj {src_year} (proxy for {target_year})"
-            )
-            df["_source_file"] = f"worldpop_{iso3.lower()}_{src_year}_proxy_{target_year}"
-        result_dfs.append(df)
+
+    for year in SOURCE_YEARS:
+        proc_cache = RAW_DIR / f"pop_{iso3.lower()}_{year}.parquet"
+        if proc_cache.exists():
+            print(f"    {iso3} {year}: using cache")
+            result_dfs.append(pd.read_parquet(proc_cache))
+        else:
+            df = _compute_country_year(iso3, year, admin_gdf)
+            df.to_parquet(proc_cache, index=False)
+            result_dfs.append(df)
+            print(f"    {iso3} {year}: {len(df)} rows computed")
 
     return pd.concat(result_dfs, ignore_index=True)
 
