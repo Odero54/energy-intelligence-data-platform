@@ -71,11 +71,13 @@ def _get_token(session: requests.Session) -> str:
     )
     resp.raise_for_status()
     token = resp.json()["access_token"]
-    session.headers.update({
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "Referer": SUPERSET_URL,
-    })
+    session.headers.update(
+        {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Referer": SUPERSET_URL,
+        }
+    )
     csrf_resp = session.get(f"{SUPERSET_URL}/api/v1/security/csrf_token/")
     csrf_resp.raise_for_status()
     session.headers.update({"X-CSRFToken": csrf_resp.json()["result"]})
