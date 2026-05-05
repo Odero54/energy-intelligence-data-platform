@@ -26,7 +26,7 @@ htmlcov/
 coverage.xml
 
 # ─── uv ──────────────────────────────────────────────────────────────────────
-uv.lock
+# uv.lock
 # keep pyproject.toml, never ignore it
 
 # ─── Data files (large — use DVC or cloud storage) ───────────────────────────
