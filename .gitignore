@@ -1,0 +1,68 @@
+# ─── Environment & secrets ───────────────────────────────────────────────────
+.env
+secrets/
+*.pem
+*.key
+*.json.secret
+
+# ─── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ─── uv ──────────────────────────────────────────────────────────────────────
+uv.lock
+# keep pyproject.toml, never ignore it
+
+# ─── Data files (large — use DVC or cloud storage) ───────────────────────────
+data/raw/
+data/processed/
+data/shapefiles/
+*.tif
+*.tiff
+*.nc
+*.h5
+*.geojson.gz
+*.csv.gz
+*.parquet
+
+# ─── Notebooks (keep .ipynb, ignore checkpoints) ─────────────────────────────
+notebooks/*.ipynb_checkpoints/
+
+# ─── dbt ─────────────────────────────────────────────────────────────────────
+dbt/target/
+dbt/logs/
+dbt/.user.yml
+
+# ─── Airflow ─────────────────────────────────────────────────────────────────
+airflow/logs/
+airflow/plugins/__pycache__/
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+# (docker-compose.yml is committed; override files are not)
+docker-compose.override.yml
+
+# ─── IDE ─────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# ─── OS ──────────────────────────────────────────────────────────────────────
+Thumbs.db

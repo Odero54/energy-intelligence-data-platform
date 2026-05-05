@@ -1,0 +1,39 @@
+name: energy_intelligence
+version: "1.0.0"
+config-version: 2
+
+profile: energy_intelligence
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  energy_intelligence:
+    staging:
+      +schema: staging
+      +materialized: view
+
+    intermediate:
+      +schema: intermediate
+      +materialized: view
+
+    marts:
+      +schema: marts
+      +materialized: table
+      +post-hook:
+        - "{{ log('Mart model ' ~ this ~ ' refreshed at ' ~ run_started_at, info=true) }}"
+
+vars:
+  # Countries in scope for MVP
+  target_countries: ['KEN', 'NGA', 'IND', 'TZA', 'RWA', 'CIV', 'PAK']
+  # Default analysis year
+  analysis_year: 2022

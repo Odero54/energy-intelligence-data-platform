@@ -1,0 +1,41 @@
+version: 2
+
+sources:
+  - name: raw
+    database: ENERGY_INTELLIGENCE
+    schema: RAW
+    tables:
+      - name: world_bank_electricity_access
+        description: World Bank SE4ALL electricity access % by country-year
+        columns:
+          - name: country_code
+            tests: [not_null]
+          - name: year
+            tests: [not_null]
+
+      - name: iea_renewable_production
+        description: IEA renewable energy production by country, fuel, year
+
+      - name: power_plants
+        description: Global Power Plant Database (WRI)
+        columns:
+          - name: plant_id
+            tests: [not_null, unique]
+
+      - name: admin_boundaries
+        description: GADM administrative boundaries with WKT geometry
+
+      - name: nightlights
+        description: VIIRS nighttime light radiance aggregated by admin boundary
+
+      - name: population_density
+        description: WorldPop population aggregated by admin boundary
+
+      - name: grid_infrastructure
+        description: Transmission lines and substations from gridfinder / OSM
+
+      - name: grid_proximity
+        description: Distance from each admin-2 centroid to nearest transmission line
+        columns:
+          - name: admin_gid
+            tests: [not_null, unique]

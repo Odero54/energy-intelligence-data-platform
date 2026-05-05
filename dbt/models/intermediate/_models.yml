@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: int_admin_energy_metrics
+    description: >
+      Joined admin-2 × year grain combining nightlights, population, electricity access,
+      and grid proximity. Foundation for all mart-layer scoring.
+    columns:
+      - name: admin_gid
+        tests: [not_null]
+      - name: country_code
+        tests: [not_null]
+      - name: year
+        tests: [not_null]
+      - name: electricity_access_pct
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 100
+      - name: mean_radiance_annual
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 10000
+      - name: total_population
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 100000000
+      - name: dist_to_grid_km
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 5000

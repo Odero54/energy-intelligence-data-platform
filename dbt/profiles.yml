@@ -1,0 +1,32 @@
+# dbt connection profiles
+# This file is gitignored when it contains real credentials.
+# Use environment variables (env_var) so secrets never touch disk.
+
+energy_intelligence:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'ENERGY_ROLE') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'ENERGY_INTELLIGENCE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'ENERGY_WH') }}"
+      schema: staging
+      threads: 4
+      client_session_keep_alive: false
+      query_tag: dbt_dev
+
+    prod:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'ENERGY_ROLE') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'ENERGY_INTELLIGENCE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'ENERGY_WH') }}"
+      schema: staging
+      threads: 8
+      client_session_keep_alive: false
+      query_tag: dbt_prod

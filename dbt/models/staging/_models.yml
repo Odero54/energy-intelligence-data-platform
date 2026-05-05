@@ -1,0 +1,75 @@
+version: 2
+
+models:
+  - name: stg_electricity_access
+    description: World Bank SE4ALL electricity access % — one row per country × year
+    columns:
+      - name: country_code
+        tests: [not_null]
+      - name: year
+        tests: [not_null]
+      - name: electricity_access_pct
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+  - name: stg_nightlights
+    description: VIIRS nighttime light radiance by admin boundary × year × month (NULL month = annual)
+    columns:
+      - name: admin_gid
+        tests: [not_null]
+      - name: country_code
+        tests: [not_null]
+      - name: year
+        tests: [not_null]
+      - name: mean_radiance
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 10000
+
+  - name: stg_population_density
+    description: WorldPop population aggregated by admin boundary × year
+    columns:
+      - name: admin_gid
+        tests: [not_null]
+      - name: country_code
+        tests: [not_null]
+      - name: year
+        tests: [not_null]
+      - name: total_population
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 100000000
+
+  - name: stg_admin_boundaries
+    description: GADM administrative boundaries with WKT geometry
+    columns:
+      - name: admin_gid
+        tests: [not_null, unique]
+      - name: country_code
+        tests: [not_null]
+      - name: admin_level
+        tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2]
+
+  - name: stg_power_plants
+    description: WRI Global Power Plant Database — one row per plant
+    columns:
+      - name: plant_id
+        tests: [not_null, unique]
+      - name: country_code
+        tests: [not_null]
+
+  - name: stg_grid_infrastructure
+    description: Transmission lines and substations from gridfinder / OSM
+    columns:
+      - name: feature_id
+        tests: [not_null]

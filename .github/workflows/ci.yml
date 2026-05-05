@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Lint + type-check + unit tests ──────────────────────────────────────────
+  quality:
+    name: Quality checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Lint (ruff)
+        run: uv run ruff check ingestion/ processing/ scripts/ airflow/dags/
+
+      - name: Format check (ruff)
+        run: uv run ruff format --check ingestion/ processing/ scripts/ airflow/dags/
+
+      - name: Type check (mypy)
+        run: |
+          uv run mypy ingestion/ processing/ \
+            --ignore-missing-imports \
+            --no-error-summary \
+            --exclude ingestion/_snowflake.py
+        continue-on-error: true  # mypy is advisory in early stages
+
+      - name: Unit tests
+        run: |
+          uv run pytest tests/ \
+            --ignore=tests/test_snowflake_connection.py \
+            -v --tb=short
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+  # ── dbt compile (validates Jinja + YAML without a live warehouse) ────────────
+  dbt-compile:
+    name: dbt compile
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install dbt
+        run: uv sync
+
+      - name: dbt deps
+        working-directory: dbt
+        run: uv run dbt deps
+        env:
+          SNOWFLAKE_ACCOUNT: ci_placeholder
+          SNOWFLAKE_USER: ci_placeholder
+          SNOWFLAKE_PASSWORD: ci_placeholder
+
+      - name: dbt compile
+        working-directory: dbt
+        run: uv run dbt compile --target dev
+        env:
+          SNOWFLAKE_ACCOUNT: ci_placeholder
+          SNOWFLAKE_USER: ci_placeholder
+          SNOWFLAKE_PASSWORD: ci_placeholder

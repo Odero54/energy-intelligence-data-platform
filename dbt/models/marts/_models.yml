@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: mart_energy_access_summary
+    description: >
+      One row per admin-2 × year. Combines electricity access, nightlights, population
+      density, and grid distance into a 0–100 Energy Access Score.
+    columns:
+      - name: admin_gid
+        tests: [not_null]
+      - name: country_code
+        tests: [not_null]
+      - name: year
+        tests: [not_null]
+      - name: energy_access_score
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 100
+      - name: score_tier
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['critical', 'high', 'medium', 'low']
+      - name: nightlight_category
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['dark', 'dim', 'lit', 'bright']
+      - name: population_category
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['rural', 'peri_urban', 'urban']
+      - name: grid_proximity_category
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['on_grid', 'near_grid', 'off_grid', 'unknown']
+
+  - name: mart_country_kpi
+    description: Country-level KPIs — one row per country × year
+    columns:
+      - name: country_code
+        tests: [not_null]
+      - name: year
+        tests: [not_null]
+      - name: electricity_access_pct
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 100
