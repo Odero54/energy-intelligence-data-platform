@@ -3,6 +3,8 @@
 Run once after `make up` to:
   1. Create the Snowflake database connection in Superset
   2. Register the two mart datasets (energy_access_summary, country_kpi)
+  3. Create 5 charts from those datasets
+  4. Assemble the charts into a published dashboard
 
 Usage:
     uv run python scripts/superset_setup.py
@@ -13,6 +15,7 @@ Environment variables (read from .env):
     SUPERSET_ADMIN_USER, SUPERSET_ADMIN_PASSWORD
 """
 
+import json
 import os
 import sys
 import time
@@ -41,6 +44,238 @@ DATASETS = [
     ("STAGING_MARTS", "MART_ENERGY_ACCESS_SUMMARY", "Energy Access Summary (admin-2 × year)"),
     ("STAGING_MARTS", "MART_COUNTRY_KPI", "Country KPIs (country × year)"),
 ]
+
+DASHBOARD_TITLE = "Energy Intelligence Overview"
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+
+def _metric(col: str, agg: str = "AVG") -> dict:
+    return {
+        "aggregate": agg,
+        "column": {"column_name": col},
+        "expressionType": "SIMPLE",
+        "label": f"{agg}({col})",
+        "hasCustomLabel": False,
+        "optionName": f"metric_{agg.lower()}_{col}",
+    }
+
+
+def _count() -> dict:
+    return {
+        "expressionType": "SQL",
+        "sqlExpression": "COUNT(*)",
+        "label": "COUNT(*)",
+        "hasCustomLabel": True,
+        "optionName": "metric_count",
+    }
+
+
+def _year_filter(year: str = "2023") -> dict:
+    return {
+        "clause": "WHERE",
+        "comparator": year,
+        "expressionType": "SIMPLE",
+        "filterOptionName": f"filter_year_{year}",
+        "operator": "==",
+        "subject": "YEAR",
+        "isExtra": False,
+        "isNew": False,
+    }
+
+
+# ── chart definitions ─────────────────────────────────────────────────────────
+
+
+def _chart_specs(summary_ds_id: int, kpi_ds_id: int) -> list[dict]:
+    """Return chart creation payloads — one per chart.
+
+    Column reference:
+      mart_energy_access_summary: admin_gid, country_code, admin_name, year,
+        electricity_access_pct, mean_nightlight_radiance, dist_to_grid_km,
+        total_population, pop_density_km2, energy_access_score, score_tier,
+        nightlight_category, population_category, grid_proximity_category
+      mart_country_kpi: country_code, year, electricity_access_pct,
+        total_population, pop_without_electricity, mean_nightlight_radiance,
+        n_power_plants, installed_capacity_mw, n_critical_zones
+    """
+    return [
+        # 1 ── Bar: Avg Energy Access Score by Country (2023)
+        {
+            "slice_name": "Avg Energy Access Score by Country (2023)",
+            "viz_type": "echarts_bar",
+            "datasource_id": summary_ds_id,
+            "datasource_type": "table",
+            "params": json.dumps(
+                {
+                    "viz_type": "echarts_bar",
+                    "x_axis": "COUNTRY_CODE",
+                    "metrics": [_metric("ENERGY_ACCESS_SCORE")],
+                    "groupby": [],
+                    "adhoc_filters": [_year_filter("2023")],
+                    "row_limit": 50,
+                    "orientation": "vertical",
+                    "x_axis_title": "Country",
+                    "y_axis_title": "Avg Energy Access Score (0-100)",
+                    "color_scheme": "supersetColors",
+                    "rich_tooltip": True,
+                    "show_legend": False,
+                }
+            ),
+        },
+        # 2 ── Bar: Electricity Access % by Country (2023)
+        {
+            "slice_name": "Electricity Access % by Country (2023)",
+            "viz_type": "echarts_bar",
+            "datasource_id": kpi_ds_id,
+            "datasource_type": "table",
+            "params": json.dumps(
+                {
+                    "viz_type": "echarts_bar",
+                    "x_axis": "COUNTRY_CODE",
+                    "metrics": [_metric("ELECTRICITY_ACCESS_PCT")],
+                    "groupby": [],
+                    "adhoc_filters": [_year_filter("2023")],
+                    "row_limit": 50,
+                    "orientation": "vertical",
+                    "x_axis_title": "Country",
+                    "y_axis_title": "Electricity Access (%)",
+                    "color_scheme": "supersetColors",
+                    "rich_tooltip": True,
+                    "show_legend": False,
+                }
+            ),
+        },
+        # 3 ── Pie: Score Tier Distribution (2023)
+        {
+            "slice_name": "Score Tier Distribution (2023)",
+            "viz_type": "pie",
+            "datasource_id": summary_ds_id,
+            "datasource_type": "table",
+            "params": json.dumps(
+                {
+                    "viz_type": "pie",
+                    "groupby": ["SCORE_TIER"],
+                    "metric": _count(),
+                    "adhoc_filters": [_year_filter("2023")],
+                    "row_limit": 10,
+                    "donut": True,
+                    "show_labels": True,
+                    "show_legend": True,
+                    "color_scheme": "supersetColors",
+                }
+            ),
+        },
+        # 4 ── Bar: Critical Zones by Country (2023)
+        {
+            "slice_name": "Critical Zones by Country (2023)",
+            "viz_type": "echarts_bar",
+            "datasource_id": kpi_ds_id,
+            "datasource_type": "table",
+            "params": json.dumps(
+                {
+                    "viz_type": "echarts_bar",
+                    "x_axis": "COUNTRY_CODE",
+                    "metrics": [_metric("N_CRITICAL_ZONES", "SUM")],
+                    "groupby": [],
+                    "adhoc_filters": [_year_filter("2023")],
+                    "row_limit": 50,
+                    "orientation": "vertical",
+                    "x_axis_title": "Country",
+                    "y_axis_title": "Critical Zones",
+                    "color_scheme": "supersetColors",
+                    "rich_tooltip": True,
+                    "show_legend": False,
+                }
+            ),
+        },
+        # 5 ── Table: 25 Lowest-Scoring Regions (2023)
+        {
+            "slice_name": "25 Lowest-Scoring Regions (2023)",
+            "viz_type": "table",
+            "datasource_id": summary_ds_id,
+            "datasource_type": "table",
+            "params": json.dumps(
+                {
+                    "viz_type": "table",
+                    "all_columns": [
+                        "COUNTRY_CODE",
+                        "ADMIN_NAME",
+                        "ENERGY_ACCESS_SCORE",
+                        "SCORE_TIER",
+                        "ELECTRICITY_ACCESS_PCT",
+                        "TOTAL_POPULATION",
+                        "DIST_TO_GRID_KM",
+                        "MEAN_NIGHTLIGHT_RADIANCE",
+                    ],
+                    "adhoc_filters": [_year_filter("2023")],
+                    "order_by_cols": ['["ENERGY_ACCESS_SCORE", true]'],
+                    "row_limit": 25,
+                    "include_search": True,
+                    "page_length": 25,
+                    "color_pn": True,
+                }
+            ),
+        },
+    ]
+
+
+# ── layout builder ────────────────────────────────────────────────────────────
+
+
+def _build_layout(chart_ids: list[int], chart_names: dict[int, str]) -> dict:
+    """Generate a 2-column grid layout with correct parent chains (required by Superset 3.x)."""
+    layout: dict = {
+        "ROOT_ID": {
+            "children": ["GRID_ID"],
+            "id": "ROOT_ID",
+            "type": "ROOT",
+        },
+        "GRID_ID": {
+            "children": [],
+            "id": "GRID_ID",
+            "parents": ["ROOT_ID"],
+            "type": "GRID",
+        },
+    }
+
+    for row_idx, i in enumerate(range(0, len(chart_ids), 2)):
+        row_key = f"ROW-{row_idx + 1}"
+        layout["GRID_ID"]["children"].append(row_key)
+        row_children = []
+
+        for j in range(2):
+            if i + j >= len(chart_ids):
+                break
+            cid = chart_ids[i + j]
+            col_key = f"CHART-{cid}"
+            row_children.append(col_key)
+            layout[col_key] = {
+                "children": [],
+                "id": col_key,
+                "meta": {
+                    "chartId": cid,
+                    "height": 50,
+                    "sliceName": chart_names.get(cid, f"Chart {cid}"),
+                    "width": 6,
+                },
+                "parents": ["ROOT_ID", "GRID_ID", row_key],
+                "type": "CHART",
+            }
+
+        layout[row_key] = {
+            "children": row_children,
+            "id": row_key,
+            "meta": {"background": "BACKGROUND_TRANSPARENT"},
+            "parents": ["ROOT_ID", "GRID_ID"],
+            "type": "ROW",
+        }
+
+    return layout
+
+
+# ── API helpers ───────────────────────────────────────────────────────────────
 
 
 def _wait_for_superset(timeout: int = 120) -> None:
@@ -86,14 +321,12 @@ def _get_token(session: requests.Session) -> str:
 
 def _get_or_create_database(session: requests.Session) -> int:
     """Return the Superset database ID, creating it if needed."""
-    # URL-encode credentials so special characters don't break the URI
     sqlalchemy_uri = (
         f"snowflake://{quote_plus(SNOWFLAKE_USER)}:{quote_plus(SNOWFLAKE_PASSWORD)}"
         f"@{SNOWFLAKE_ACCOUNT}/{SNOWFLAKE_DATABASE}/STAGING_MARTS"
         f"?warehouse={SNOWFLAKE_WAREHOUSE}&role={SNOWFLAKE_ROLE}"
     )
 
-    # Check if already exists (fetch all, filter client-side to avoid Rison encoding)
     existing = session.get(f"{SUPERSET_URL}/api/v1/database/", params={"page_size": 100})
     existing.raise_for_status()
     for db in existing.json().get("result", []):
@@ -138,11 +371,7 @@ def _get_or_create_dataset(
 
     resp = session.post(
         f"{SUPERSET_URL}/api/v1/dataset/",
-        json={
-            "database": db_id,
-            "schema": schema,
-            "table_name": table,
-        },
+        json={"database": db_id, "schema": schema, "table_name": table},
     )
     if not resp.ok:
         print(f"  ERROR {resp.status_code}: {resp.text}", file=sys.stderr)
@@ -150,6 +379,94 @@ def _get_or_create_dataset(
     ds_id = resp.json()["id"]
     print(f"  Registered dataset: {table} (id={ds_id})")
     return ds_id
+
+
+def _get_or_create_chart(session: requests.Session, spec: dict) -> int:
+    """Return chart ID, creating it if a chart with that name doesn't exist."""
+    existing = session.get(f"{SUPERSET_URL}/api/v1/chart/", params={"page_size": 200})
+    existing.raise_for_status()
+    for chart in existing.json().get("result", []):
+        if chart.get("slice_name") == spec["slice_name"]:
+            cid = chart["id"]
+            print(f"  Chart already exists: {spec['slice_name']} (id={cid})")
+            return cid
+
+    resp = session.post(f"{SUPERSET_URL}/api/v1/chart/", json=spec)
+    if not resp.ok:
+        print(f"  ERROR creating chart '{spec['slice_name']}': {resp.text}", file=sys.stderr)
+        resp.raise_for_status()
+    cid = resp.json()["id"]
+    print(f"  Created chart: {spec['slice_name']} (id={cid})")
+    return cid
+
+
+def _get_or_create_dashboard(
+    session: requests.Session,
+    chart_ids: list[int],
+    chart_names: dict[int, str],
+) -> int:
+    """Return dashboard ID, creating/updating it with the given charts."""
+    existing = session.get(f"{SUPERSET_URL}/api/v1/dashboard/", params={"page_size": 100})
+    existing.raise_for_status()
+    for dash in existing.json().get("result", []):
+        if dash.get("dashboard_title") == DASHBOARD_TITLE:
+            did = dash["id"]
+            print(f"  Dashboard already exists: '{DASHBOARD_TITLE}' (id={did}) — updating layout")
+            _update_dashboard_layout(session, did, chart_ids, chart_names)
+            return did
+
+    # Step 1 — create empty dashboard
+    resp = session.post(
+        f"{SUPERSET_URL}/api/v1/dashboard/",
+        json={"dashboard_title": DASHBOARD_TITLE, "published": True},
+    )
+    if not resp.ok:
+        print(f"  ERROR creating dashboard: {resp.text}", file=sys.stderr)
+        resp.raise_for_status()
+    did = resp.json()["id"]
+    print(f"  Created dashboard: '{DASHBOARD_TITLE}' (id={did})")
+
+    # Step 2 — set layout with chart components
+    _update_dashboard_layout(session, did, chart_ids, chart_names)
+    return did
+
+
+def _link_slices(session: requests.Session, dashboard_id: int, chart_ids: list[int]) -> None:
+    """Link charts to a dashboard via the Chart REST API.
+
+    PUT /api/v1/chart/{id} with {"dashboards": [dashboard_id]} creates the
+    chart-dashboard relationship that Superset's frontend uses to resolve chart
+    components. position_json alone doesn't reliably trigger the DB sync.
+    """
+    for cid in chart_ids:
+        resp = session.put(
+            f"{SUPERSET_URL}/api/v1/chart/{cid}",
+            json={"dashboards": [dashboard_id]},
+        )
+        if not resp.ok:
+            print(f"  WARN: could not link chart {cid}: {resp.status_code}", file=sys.stderr)
+    print(f"  Linked {len(chart_ids)} charts to dashboard")
+
+
+def _update_dashboard_layout(
+    session: requests.Session,
+    dashboard_id: int,
+    chart_ids: list[int],
+    chart_names: dict[int, str],
+) -> None:
+    position = _build_layout(chart_ids, chart_names)
+    resp = session.put(
+        f"{SUPERSET_URL}/api/v1/dashboard/{dashboard_id}",
+        json={"position_json": json.dumps(position)},
+    )
+    if not resp.ok:
+        print(f"  ERROR updating dashboard layout: {resp.text}", file=sys.stderr)
+        resp.raise_for_status()
+    _link_slices(session, dashboard_id, chart_ids)
+    print(f"  Dashboard layout updated ({len(chart_ids)} charts)")
+
+
+# ── main ──────────────────────────────────────────────────────────────────────
 
 
 def main() -> None:
@@ -161,12 +478,26 @@ def main() -> None:
 
     db_id = _get_or_create_database(session)
 
+    ds_ids: dict[str, int] = {}
     for schema, table, verbose in DATASETS:
-        _get_or_create_dataset(session, db_id, schema, table, verbose)
+        ds_ids[table] = _get_or_create_dataset(session, db_id, schema, table, verbose)
 
-    print("\nSuperset setup complete.")
-    print(f"Open {SUPERSET_URL} and create charts from the registered datasets.")
-    print("See dashboards/README.md for recommended chart configurations.")
+    summary_ds_id = ds_ids["MART_ENERGY_ACCESS_SUMMARY"]
+    kpi_ds_id = ds_ids["MART_COUNTRY_KPI"]
+
+    print("\nCreating charts ...")
+    chart_ids: list[int] = []
+    chart_names: dict[int, str] = {}
+    for spec in _chart_specs(summary_ds_id, kpi_ds_id):
+        cid = _get_or_create_chart(session, spec)
+        chart_ids.append(cid)
+        chart_names[cid] = spec["slice_name"]
+
+    print("\nCreating dashboard ...")
+    dashboard_id = _get_or_create_dashboard(session, chart_ids, chart_names)
+
+    print("\nSetup complete.")
+    print(f"Dashboard → {SUPERSET_URL}/superset/dashboard/{dashboard_id}/")
 
 
 if __name__ == "__main__":
