@@ -6,7 +6,7 @@
         ingest-world-bank ingest-power-plants ingest-boundaries ingest-all \
         ingest-nightlights ingest-nightlights-local \
         ingest-grid grid-proximity load-grid-proximity \
-        ingest-population superset-setup
+        ingest-population streamlit
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 PYTHON := python3
@@ -28,8 +28,11 @@ install-dev: ## Install all dependencies (incl. dev extras) with uv
 up: ## Start all services (detached)
 	docker compose up -d
 
-down: ## Stop and remove containers
+down: ## Stop containers (keeps volumes — metadata survives)
 	docker compose down
+
+down-clean: ## Stop containers AND delete volumes (wipes Superset/Airflow metadata)
+	docker compose down -v
 
 restart: ## Restart all services
 	docker compose restart
@@ -52,13 +55,13 @@ airflow-shell: ## Open a shell in the Airflow scheduler container
 
 # ─── dbt ─────────────────────────────────────────────────────────────────────
 dbt-run: ## Run all dbt models
-	cd dbt && $(DBT) run
+	cd dbt && set -a && . ../.env && set +a && $(DBT) run
 
 dbt-test: ## Run dbt tests
-	cd dbt && $(DBT) test
+	cd dbt && set -a && . ../.env && set +a && $(DBT) test
 
 dbt-docs: ## Generate and serve dbt docs on :8085
-	cd dbt && $(DBT) docs generate && $(DBT) docs serve --port 8085
+	cd dbt && set -a && . ../.env && set +a && $(DBT) docs generate && $(DBT) docs serve --port 8085
 
 dbt-deps: ## Install dbt packages
 	cd dbt && $(DBT) deps
@@ -107,9 +110,9 @@ grid-proximity: ## Compute distance from admin centroids to nearest grid line
 load-grid-proximity: ## Load data/processed/grid_proximity.parquet → RAW.GRID_PROXIMITY
 	$(UV) run python scripts/load_grid_proximity.py
 
-# ─── Superset ────────────────────────────────────────────────────────────────
-superset-setup: ## Register Snowflake connection + datasets in Superset via REST API
-	$(UV) run python scripts/superset_setup.py
+# ─── Streamlit ───────────────────────────────────────────────────────────────
+streamlit: ## Run Streamlit dashboard locally (http://localhost:8501)
+	$(UV) run streamlit run dashboards/app.py --server.port 8501
 
 # ─── Snowflake ────────────────────────────────────────────────────────────────
 snowflake-setup: ## Run Snowflake schema DDL (requires snowsql or Python connector)

@@ -39,6 +39,8 @@ dependencies = [
     "folium>=0.16",
     "plotly>=5.20",
     "cryptography>=47.0.0",
+    # Dashboard
+    "streamlit>=1.35",
 ]
 
 [project.optional-dependencies]

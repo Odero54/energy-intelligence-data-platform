@@ -57,7 +57,7 @@ select
     nl.mean_nightlight_radiance,
     pl.n_power_plants,
     pl.installed_capacity_mw,
-    cz.n_critical_zones,
+    coalesce(cz.n_critical_zones, 0) as n_critical_zones,
     current_timestamp()                             as _dbt_updated_at
 from access a
 left join pop             p  on a.country_code = p.country_code  and a.year = p.year

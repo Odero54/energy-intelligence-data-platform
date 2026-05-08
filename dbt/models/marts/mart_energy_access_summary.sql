@@ -6,6 +6,13 @@
 --   25% nightlight proxy (darkness index: low radiance = high score)
 --   20% population       (demand pressure: higher density = more people affected)
 --   20% grid distance    (infrastructure gap: farther = more underserved)
+--
+-- NOTE: electricity_access_pct is national (World Bank SE4ALL country-level).
+-- This creates a mathematical ceiling on the score for well-electrified countries:
+--   KEN (~76%), PAK (~90%), IND (~93%) can never reach the critical threshold (75)
+--   even for genuinely underserved admin-2 regions, because the national rate is
+--   applied uniformly across all sub-national units. Sub-national electricity data
+--   would be required to detect critical zones in these countries.
 
 with base as (
     select * from {{ ref('int_admin_energy_metrics') }}
@@ -66,6 +73,19 @@ scored as (
         , 2)                                                            as energy_access_score,
 
         a.geometry_wkt,
+
+        -- GeoJSON coordinates array for deck_polygon (line_type="json").
+        -- deck_polygon in Superset 3.x does not accept WKT directly; it needs a
+        -- JSON array of [lon, lat] rings.  Snowflake's geo pipeline:
+        --   WKT → GEOGRAPHY → GeoJSON string → extract "coordinates" key → VARCHAR
+        -- Returns NULL (handled by IGNORE NULL LOCATIONS) when geometry is absent.
+        -- ST_ASGEOJSON returns an OBJECT (VARIANT) in Snowflake, not a string,
+        -- so no PARSE_JSON needed — use GET() directly on the OBJECT.
+        get(
+            st_asgeojson(try_to_geography(a.geometry_wkt)),
+            'coordinates'
+        )::varchar                                                      as geometry_json,
+
         current_timestamp()                                             as _dbt_updated_at
 
     from base b
